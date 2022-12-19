@@ -6,7 +6,7 @@ import time
 import board
 import busio
 import adafruit_tca9548a
-from mcp3424 import MCP3424
+from MCP3424.mcp3424 import MCP3424
 
 i2c = busio.I2C(board.SCL, board.SDA)
 mux = adafruit_tca9548a.TCA9548A(i2c, address=0x70)
