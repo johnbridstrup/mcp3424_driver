@@ -1,5 +1,7 @@
 # MCP3422
-This is a driver for the MCP3424 board
+This is a driver for the MCP3424 board.
+
+Modified from https://github.com/benlhy/MCP3422
 
 # Functions
 * setup

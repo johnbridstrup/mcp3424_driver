@@ -1,69 +1,119 @@
-# This file runs the code for the MCP3422 sensor
-import board
+"""Driver for MCP3424 ADC.
+"""
 import busio
-import adafruit_tca9548a
-
-i2c = busio.I2C(board.SCL, board.SDA)
-mux = adafruit_tca9548a.TCA9548A(i2c, address=0x70)
 
 ADDRESS = 0x68
 
+
 class MCP3424:
-    def __init__(self, bits, channel, gains):
+    BIT_MAP = { # Bit rate choices
+        12: 0b00,
+        14: 0b01,
+        16: 0b10,
+        18: 0b11,
+    }
+
+    CHANNEL_MAP = { # Channel choices
+        1: 0b00,
+        2: 0b01,
+    }
+
+    GAIN_MAP = { # Gain choices
+        1: 0b00,
+        2: 0b01,
+        4: 0b10,
+        8: 0b11,
+    }
+
+    def __init__(self, i2c_bus: busio.I2C, bits=18, channel=1, gain=1):
+        """Initialize the driver.
+
+        Args:
+            i2c_bus (busio.I2C): I2C bus where the ADC is located
+            bits (int, optional): Bit rate. Defaults to 18.
+            channel (int, optional): Channel to read. Defaults to 1.
+            gain (int, optional): Gain of the signal. Defaults to 1.
+        """
         self.bits = bits
         self.channel = channel
-        self.gains = gains
-#init object with defaults.
-mcp = MCP3424(18,1,1)
+        self.gain = gain
+        self._i2c = i2c_bus
 
-def setup(bits,channel,gains):
-    mcp.bits = bits
-    mcp.channel = channel
-    mcp.gains = gains
-    bit_array={12:0b00,14:0b01,16:0b10,18:0b11} # Sample rate map
-    channel_array={1:0b00,2:0b01}
-    gain_array = {1:0b00,2:0b01,4:0b10,8:0b11} 
-    while not mux[1].try_lock():
-        pass
-    print(mux[1].scan())
-    print(bin(0b1<<7|channel_array[channel]<<5|
-                0b1<<4|bit_array[bits]<<2|gain_array[gains]))
-    mux[1].writeto(ADDRESS,bytes([0b1<<7|channel_array[channel]<<5|
-                0b1<<4|bit_array[bits]<<2|gain_array[gains]]))
+        self.setup()
 
-# returns the data in microvolts
-def read():
-    bits = mcp.bits
-    gains = mcp.gains
-    number = 0
-    if bits>15:
-        result = bytearray(3)
-    else:
-        result = bytearray(2)
-    mux[1].readfrom_into(ADDRESS,result)
+    @property
+    def bits(self):
+        return self._bits
     
-    if bits == 18:
-        number = (result[0]&0b1)<<16|result[1]<<8|result[2]
-        if result[0]&0b10==1:
-            number = -1*number
-        number = number*15.625
-    elif bits == 16:
-        number = (result[0]&0b1111111)<<8|result[1]
+    @bits.setter
+    def bits(self, bits):
+        if bits not in self.BIT_MAP:
+            raise ValueError(f"{bits} is not a valid bit rate")
+        self._bits = bits
 
-        if result[0]&0b10000000==1:
-            number = -1*number
-        number = number*62.5
-    elif bits == 14:
-        number = (result[0]&0b11111)<<8|result[1]
+    @property
+    def channel(self):
+        return self._channel
+    
+    @channel.setter
+    def channel(self, channel):
+        if channel not in self.CHANNEL_MAP:
+            raise ValueError(f"{channel} is not a valid channel")
+        self._channel = channel
 
-        if (result[0]&0b100000)==1:
-            number = -1*number
-        number = number*250
-    elif bits == 12:
-        number = (result[0]&0b111)<<8|result[1]
+    @property
+    def gain(self):
+        return self._gain
 
-        if result[0]&0b1000==1:
-            number = -1*number
-        number = number*1000
-    number = number*gains
-    return number
+    @gain.setter
+    def gain(self, gain):
+        if gain not in self.GAIN_MAP:
+            raise ValueError(f"{gain} is not a valid gain")
+        self._gain = gain
+
+    def setup(self):
+        # Write the desired bit rate, channel and gain to the device.
+        while not self._i2c.try_lock():
+            pass
+
+        self._i2c.writeto(
+            ADDRESS,
+            bytes(
+                [0b1<<7|self.CHANNEL_MAP[self._channel]<<5|
+                0b1<<4|self.BIT_MAP[self._bits]<<2|self.GAIN_MAP[self._gain]]
+            )
+        )
+
+    def read(self):
+        if self._bits > 15:
+            result = bytearray(3)
+        else:
+            result = bytearray(2)
+        
+        self._i2c.readfrom_into(ADDRESS, result)
+
+        if self._bits == 18:
+            number = (result[0]&0b1)<<16|result[1]<<8|result[2]
+            if result[0]&0b10==1:
+                number = -1*number
+            number = number*15.625
+        elif self._bits == 16:
+            number = (result[0]&0b1111111)<<8|result[1]
+
+            if result[0]&0b10000000==1:
+                number = -1*number
+            number = number*62.5
+        elif self._bits == 14:
+            number = (result[0]&0b11111)<<8|result[1]
+
+            if (result[0]&0b100000)==1:
+                number = -1*number
+            number = number*250
+        elif self._bits == 12:
+            number = (result[0]&0b111)<<8|result[1]
+
+            if result[0]&0b1000==1:
+                number = -1*number
+            number = number*1000
+        number = number*self._gain
+        return number
