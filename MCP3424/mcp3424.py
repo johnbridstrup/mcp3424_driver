@@ -14,8 +14,10 @@ class MCP3424:
     }
 
     CHANNEL_MAP = { # Channel choices
-        1: 0b00,
-        2: 0b01,
+        0: 0b00,
+        1: 0b01,
+        2: 0b10,
+        3: 0b11,
     }
 
     GAIN_MAP = { # Gain choices
