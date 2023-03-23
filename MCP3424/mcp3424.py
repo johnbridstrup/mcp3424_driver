@@ -28,7 +28,16 @@ class MCP3424:
         8: 0b11,
     }
 
-    def __init__(self, i2c_bus: busio.I2C, bits=18, channel=1, gain=1, max_lock_retries=10, lock_retry_delay=0.25):
+    def __init__(
+        self, 
+        i2c_bus: busio.I2C, 
+        bits=18, 
+        channel=1, 
+        gain=1, 
+        max_lock_retries=10, 
+        lock_retry_delay=0.25, 
+        channel_switch_delay_seconds=0.35
+    ):
         """Initialize the driver.
 
         Args:
@@ -43,6 +52,7 @@ class MCP3424:
         self._i2c = i2c_bus
         self.max_lock_retries = max_lock_retries
         self.lock_retry_delay = lock_retry_delay
+        self.channel_switch_delay = channel_switch_delay_seconds
 
         self.setup()
 
@@ -87,10 +97,7 @@ class MCP3424:
                 )
             time.sleep(self.lock_retry_delay)
 
-    def _write_to(self, channel):
-        if channel != self.channel:
-            self.channel = channel
-        
+    def _write_to(self):
         self._i2c.writeto(
             ADDRESS,
             bytes(
@@ -104,7 +111,7 @@ class MCP3424:
         self._try_lock()
 
         # Write to initial channel selection
-        self._write_to(self.channel)
+        self._write_to()
 
     def _get_result_bytes(self):
         if self._bits > 15:
@@ -139,6 +146,16 @@ class MCP3424:
 
         return number*self._gain
 
+    def set_channel(self, channel, delay=False):
+        if channel == self.channel:
+            return
+        
+        self.channel = channel
+        self._write_to()
+        # There can be a delay when reading channels, we can't read immediately.
+        if delay:
+            time.sleep(self.channel_switch_delay)
+
     def read(self):
         """Continuously read from currently set channel
 
@@ -149,3 +166,7 @@ class MCP3424:
         self._i2c.readfrom_into(ADDRESS, result)
         voltage = self._get_voltage(result)
         return voltage
+
+    def read_from_channel(self, channel, delay=False):
+        self.set_channel(channel, delay)
+        return self.read()
