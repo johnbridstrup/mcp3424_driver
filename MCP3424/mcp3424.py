@@ -1,6 +1,7 @@
 """Driver for MCP3424 ADC.
 """
 import busio
+import time
 
 ADDRESS = 0x68
 
@@ -27,7 +28,7 @@ class MCP3424:
         8: 0b11,
     }
 
-    def __init__(self, i2c_bus: busio.I2C, bits=18, channel=1, gain=1):
+    def __init__(self, i2c_bus: busio.I2C, bits=18, channel=1, gain=1, max_lock_retries=10, lock_retry_delay=0.25):
         """Initialize the driver.
 
         Args:
@@ -40,6 +41,8 @@ class MCP3424:
         self.channel = channel
         self.gain = gain
         self._i2c = i2c_bus
+        self.max_lock_retries = max_lock_retries
+        self.lock_retry_delay = lock_retry_delay
 
         self.setup()
 
@@ -73,10 +76,20 @@ class MCP3424:
             raise ValueError(f"{gain} is not a valid gain")
         self._gain = gain
 
+    def _try_lock(self):
+        counter = 0
+        while not self._i2c.try_lock():
+            counter += 1
+            if counter >= self.max_lock_retries:
+                raise RuntimeError(
+                    (f"Could not acquire I2C lock. Retried {counter} times in "
+                    f"{self.max_lock_retries*self.lock_retry_delay} seconds.")
+                )
+            time.sleep(self.lock_retry_delay) 
+
     def setup(self):
         # Write the desired bit rate, channel and gain to the device.
-        while not self._i2c.try_lock():
-            pass
+        self._try_lock()
 
         self._i2c.writeto(
             ADDRESS,
