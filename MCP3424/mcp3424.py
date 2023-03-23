@@ -85,12 +85,12 @@ class MCP3424:
                     (f"Could not acquire I2C lock. Retried {counter} times in "
                     f"{self.max_lock_retries*self.lock_retry_delay} seconds.")
                 )
-            time.sleep(self.lock_retry_delay) 
+            time.sleep(self.lock_retry_delay)
 
-    def setup(self):
-        # Write the desired bit rate, channel and gain to the device.
-        self._try_lock()
-
+    def _write_to(self, channel):
+        if channel != self.channel:
+            self.channel = channel
+        
         self._i2c.writeto(
             ADDRESS,
             bytes(
@@ -99,14 +99,20 @@ class MCP3424:
             )
         )
 
-    def read(self):
-        if self._bits > 15:
-            result = bytearray(3)
-        else:
-            result = bytearray(2)
-        
-        self._i2c.readfrom_into(ADDRESS, result)
+    def setup(self):
+        # Attempt to acquire the lock
+        self._try_lock()
 
+        # Write to initial channel selection
+        self._write_to(self.channel)
+
+    def _get_result_bytes(self):
+        if self._bits > 15:
+            return bytearray(3)
+        else:
+            return bytearray(2)
+
+    def _get_voltage(self, result):
         if self._bits == 18:
             number = (result[0]&0b1)<<16|result[1]<<8|result[2]
             if result[0]&0b10==1:
@@ -130,5 +136,16 @@ class MCP3424:
             if result[0]&0b1000==1:
                 number = -1*number
             number = number*1000
-        number = number*self._gain
-        return number
+
+        return number*self._gain
+
+    def read(self):
+        """Continuously read from currently set channel
+
+        Returns:
+            float: Voltage in uV
+        """
+        result = self._get_result_bytes()
+        self._i2c.readfrom_into(ADDRESS, result)
+        voltage = self._get_voltage(result)
+        return voltage
